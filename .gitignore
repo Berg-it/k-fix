@@ -25,3 +25,4 @@ __pycache__
 .venv/
 .env
 .env.*
+how-to-use.md

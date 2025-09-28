@@ -1,95 +1,126 @@
-# 🚀 K-Fix — DevOps AI Agent (MVP)
+# 🤖 K-Fix — Intelligent Kubernetes Fix Agent
 
-**K-Fix** est un agent DevOps intelligent conçu pour :
-- détecter automatiquement les erreurs fréquentes de Kubernetes,
-- analyser et résumer les incidents,
-- proposer un correctif sous forme de Merge Request (MR) GitLab,
-- notifier l’équipe sur Slack/Teams,
-- apprendre des incidents passés grâce à une base vectorielle.
+K-Fix est un agent IA intelligent qui reçoit les alertes Datadog et propose des **correctifs Kubernetes automatisés** (via MR GitLab), avec raisonnement contextuel et apprentissage continu.
 
 ---
 
-## ✅ Roadmap MVP (Checklist)
+## 🎯 Objectif
 
-### 1. Environnement
-- [X Choisir Python comme langage principal
-- [X] Créer un dépôt Git
-- [X] Mettre en place un environnement virtuel (venv/poetry)
-- [X] Préparer un `Dockerfile` de base
-
-### 2. Réception des alertes
-- [X] Mettre en place un petit serveur (FastAPI)
-- [X] Créer un endpoint `/datadog-webhook`
-- [X] Tester la réception d’alertes Datadog (payload JSON)
-
-### 3. Connexion à Datadog
-- [X] Configurer `datadog-api-client`
-- [X] Récupérer les logs associés à une alerte
-- [X] Récupérer les metrics associées
-
-### 4. Stockage relationnel
-- [ ] Installer une base SQL (Postgres conseillé)
-- [ ] Créer une table `incidents` (id, service, résumé, statut, lien MR)
-- [ ] Sauvegarder chaque alerte reçue
-
-### 5. Résumé d’incident
-- [ ] Implémenter un résumé simple par règles
-- [ ] (Optionnel) Ajouter un LLM plus tard pour des résumés avancés
-
-### 6. Mémoire vectorielle
-- [ ] Choisir une Vector DB (FAISS ou PGVector)
-- [ ] Générer un embedding pour chaque résumé
-- [ ] Stocker embedding + métadonnées (incident_id, service)
-- [ ] Rechercher des incidents similaires lors d’une nouvelle alerte
-
-### 7. Création de MR GitLab
-- [ ] Configurer `python-gitlab`
-- [ ] Générer une branche et un patch simple (hardcodé pour MVP)
-- [ ] Créer une MR automatiquement avec description
-
-### 8. Notification équipe
-- [ ] Configurer `slack_sdk` ou webhook Teams
-- [ ] Envoyer résumé incident + lien MR dans le channel
-
-### 9. Feedback et apprentissage
-- [ ] Suivre le statut des MR (ouverte, mergée, rejetée)
-- [ ] Mettre à jour la base SQL avec le feedback
-- [ ] Enrichir la Vector DB avec les correctifs validés
+- Réceptionner les alertes Datadog (CPU, mémoire, erreurs fréquentes).
+- Enrichir avec contexte (logs, métriques, infos k8s).
+- Raisonner avec un moteur IA (LLM + règles).
+- Générer plusieurs plans de correction (patchs Kubernetes).
+- Proposer une Merge Request GitLab justifiée.
+- Apprendre des incidents passés (Vector DB + feedback).
 
 ---
 
-## 🐳 Bugs Kubernetes gérés (MVP)
+## 🚀 Workflow Intelligent
 
-Dès le départ, **K-Fix** se concentre sur la **détection automatique des bugs connus et fréquents de Kubernetes**.  
-L’objectif est de couvrir l’ensemble des erreurs courantes qui perturbent les workloads, par exemple :
+```text
+[1] Datadog → webhook
+[2] K-Fix reçoit et enrichit alerte
+[3] Récupère contexte (metrics, logs, kube API)
+[4] Decision Engine (LLM + règles)
+[5] Génère actions candidates (patch YAML)
+[6] Safety Layer (dry-run, quotas)
+[7] Crée MR GitLab + notif Slack/Teams
+[8] Feedback (BDD relationnelle + Vector DB)
+```
 
-- Pods en échec : `OOMKilled`, `CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`  
-- Problèmes de scheduling : `Pod Pending` (pas de nœud disponible, quotas épuisés)  
-- Problèmes de configuration : variables d’environnement manquantes, probes mal définies, volumes non montés  
-- Erreurs de ressources : quotas CPU/mémoire dépassés, node pressure  
-- Problèmes réseau fréquents : `Connection Refused`, `DNS lookup failed`  
-- Et d’autres scénarios récurrents liés à Kubernetes en production  
+---
 
-👉 Le principe est simple :  
-1. **Détection** via les logs/alertes Datadog.  
-2. **Association** à une catégorie d’erreur connue.  
-3. **Proposition** d’un correctif type (patch K8s/YAML).  
-4. **Création d’une MR GitLab** pour validation par l’équipe.  
+## ✅ Roadmap de Développement
+
+### ✅ Phase 1 — Fondations (TERMINÉE)
+- [x] Créer API FastAPI `/datadog-webhook`.
+- [x] Parser payload Datadog → `enriched_alert` (namespace, pod, deployment, metric, value, threshold).
+- [x] Charger secrets via `.env` (local) ou k8s Secrets.
+- [x] Logs structurés (JSON).
+
+### Phase 2 — Contexte & Enrichissement
+- [ ] Connecter API Kubernetes (pod, deployment, quotas, HPA).
+- [ ] Récupérer logs récents via Datadog Logs API.
+- [ ] Ajouter métriques mémoire + erreurs applicatives.
+- [ ] Construire `context_bundle` complet.
+
+### Phase 3 — Mémoire & Apprentissage
+- [ ] Intégrer Vector DB (Weaviate, Pinecone, Qdrant…).
+- [ ] Stocker incidents + actions proposées + résultat.
+- [ ] Activer recherche incidents similaires.
+- [ ] Créer embeddings du `context_bundle`.
+
+### Phase 4 — Decision Engine
+- [ ] Intégrer un LLM (Claude, GPT, Mistral).
+- [ ] Écrire prompts structurés pour raisonnement.
+- [ ] Ajouter règles (policy engine) :
+  - jamais auto-merge en prod,
+  - dry-run obligatoire,
+  - seuil max scaling.
+
+### Phase 5 — Actions Candidates
+- [ ] Générateur de correctifs Kubernetes (YAML templates).
+- [ ] Proposer plusieurs plans d’action adaptés au type d’alerte reçu.
+- [ ] Chaque plan doit inclure :
+  - Justification (logs + métriques + contexte)
+  - Alternatives possibles
+  - Plan de rollback
+- [ ] L’agent doit rester extensible : intégrer de nouveaux scénarios en fonction
+      des incidents passés (apprentissage via Vector DB + feedback humain).
+
+### Phase 6 — Safety Layer
+- [ ] Implémenter `kubectl apply --dry-run=server`.
+- [ ] Vérifier quotas namespace.
+- [ ] Vérifier cohérence `request ≤ limit`.
+- [ ] Rejeter plan si check échoue.
+
+### Phase 7 — MR & Collaboration
+- [ ] Intégrer GitLab API → création MR.
+- [ ] MR contient patch, justification, alternatives, rollback plan.
+- [ ] Notifier Slack/Teams avec résumé clair.
+- [ ] Ajouter labels/tags (env, team).
+
+### Phase 8 — Feedback & Learning
+- [ ] Relier MR ↔ Incident en BDD relationnelle.
+- [ ] Suivre statut MR (merged, closed, rejected).
+- [ ] Stocker résultat dans Vector DB.
+- [ ] Adapter prompts LLM en fonction du feedback.
 
 ---
 
 ## 📌 Notes
 
-- MVP = **un seul agent monolithique** qui gère toute la chaîne : Alerte → Résumé → MR → Notification.  
-- Évolution prévue = séparation en plusieurs agents spécialisés (Logs, Infra, Diagnostic, GitOps, etc.).  
-- La mémoire repose sur :  
-  - une **base SQL** (historique exact des incidents et MR),  
-  - une **Vector DB** (mémoire sémantique pour retrouver les cas similaires).
+- ⚠️ **Production** : MR jamais auto-mergée.  
+- ✅ **Staging/Dev** : auto-merge possible.  
+- 🔄 Apprentissage continu via Vector DB.  
 
+---
 
+## 🗂 Structure prévue
 
-curl -X POST https://kfix.cloudcorner.org/datadog-webhook \
-     -H "Content-Type: application/json" \
-     -d '{"alert_type":"error","service":"checkout-service","message":"OOMKilled"}'
+```
+kfix/
+ ├── main.py          # API FastAPI (webhook Datadog)
+ ├── context/         # modules de récupération contexte
+ ├── decision/        # moteur de raisonnement (LLM + règles)
+ ├── actions/         # générateur de patchs Kubernetes
+ ├── safety/          # validations dry-run, quotas
+ ├── gitlab/          # interaction GitLab (MR)
+ ├── memory/          # Vector DB + BDD relationnelle
+ └── tests/           # tests unitaires & intégration
+```
 
-  
+---
+
+## 🛠 Tech Stack
+
+- **FastAPI** → serveur API.  
+- **Python** → langage principal.  
+- **Datadog API** → alertes + logs/metrics.  
+- **Kubernetes Python client** → état cluster.  
+- **GitLab API** → MR.  
+- **Vector DB** → mémoire (Weaviate, Pinecone, Qdrant).  
+- **Postgres** → base relationnelle incidents ↔ MR.  
+- **LLM** → raisonnement (Claude, GPT, Mistral).  
+
+---
