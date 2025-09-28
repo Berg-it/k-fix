@@ -1,0 +1,12 @@
+# .dockerignore
+
+# caches & compilés
+__pycache__/
+*.pyc
+
+# environnement virtuel
+.venv/
+
+# fichiers sensibles
+.env
+.env.*
