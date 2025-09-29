@@ -135,3 +135,30 @@ kfix/
 - **LLM** → raisonnement (Claude, GPT, Mistral).  
 
 ---
+
+
+
+
+
+1. Réception & Enrichissement multi-source
+	•	Recevoir le webhook natif Datadog (alerte brute).
+	•	Appeler API Datadog → récupérer monitor_details (tags, query, seuils, groupes).
+	•	Appeler API Kubernetes → récupérer pod, deployment, namespace, events.
+	•	Optionnel : récupérer logs et métriques supplémentaires.
+👉 Objectif : reconstituer un context_bundle complet sans dépendre du JSON custom.
+
+2. Normalisation du contexte
+	•	Transformer le context_bundle dans une forme stable :
+
+{
+  "alert": {...},
+  "monitor": {...},
+  "k8s_context": {...},
+  "logs": [...],
+  "metrics": {...}
+}
+
+	•	Peu importe si l’alerte est CPU, OOM ou CrashLoopBackOff → la structure reste la même.
+👉 Objectif : rendre les données exploitables pour le moteur de raisonnement.
+
+
