@@ -32,11 +32,11 @@ K-Fix est un agent IA intelligent qui reçoit les alertes Datadog et propose des
 
 ## ✅ Roadmap de Développement
 
-### ✅ Phase 1 — Fondations (TERMINÉE)
-- [x] Créer API FastAPI `/datadog-webhook`.
-- [x] Parser payload Datadog → `enriched_alert` (namespace, pod, deployment, metric, value, threshold).
-- [x] Charger secrets via `.env` (local) ou k8s Secrets.
-- [x] Logs structurés (JSON).
+### Phase 1 — Fondations
+- [X] Créer API FastAPI `/datadog-webhook`.
+- [X] Parser payload Datadog → `enriched_alert` (namespace, pod, deployment, metric, value, threshold).
+- [X] Charger secrets via `.env` (local) ou k8s Secrets.
+- [X] Logs structurés (JSON).
 
 ### Phase 2 — Contexte & Enrichissement
 - [ ] Connecter API Kubernetes (pod, deployment, quotas, HPA).
@@ -85,6 +85,17 @@ K-Fix est un agent IA intelligent qui reçoit les alertes Datadog et propose des
 - [ ] Suivre statut MR (merged, closed, rejected).
 - [ ] Stocker résultat dans Vector DB.
 - [ ] Adapter prompts LLM en fonction du feedback.
+
+---
+
+## 🧭 Principes de Conception
+
+- **Pas d’automatisme aveugle** : K-Fix ne pousse jamais un correctif sans justification claire.
+- **Contexte d’abord** : chaque proposition s’appuie sur les métriques, logs et état du cluster.
+- **Explicabilité** : toutes les actions candidates sont accompagnées de leur justification et d’alternatives.
+- **Sécurité** : dry-run obligatoire, politiques de quotas respectées, jamais d’auto-merge en production.
+- **Évolutivité** : l’agent apprend de chaque incident et enrichit sa mémoire (Vector DB + feedback).
+- **Collaboration** : les humains restent dans la boucle, K-Fix propose mais ne décide pas seul.
 
 ---
 
