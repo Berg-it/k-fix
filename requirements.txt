@@ -31,3 +31,4 @@ urllib3==2.5.0
 uvicorn==0.37.0
 python-dotenv==1.0.1
 kubernetes==33.1.0
+asyncpg==0.30.0
