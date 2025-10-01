@@ -114,7 +114,7 @@ async def _process_alert_async(payload: Dict[str, Any], alert_hash: str):
                 
                 if pod_name:
                     # Get Kubernetes context
-                    k8s_context = await get_k8s_context(namespace, pod_name, deployment)
+                    k8s_context = await get_k8s_context(namespace, pod_name, deployment)  # ✅ Ajouter await
                     
                     # Combine all information
                     enriched_data = {
@@ -160,7 +160,7 @@ async def _alert_worker():
                 
                 for alert in pending_alerts:
                     try:
-                        alert_hash = alert["alert_hash"]
+                        alert_hash = alert["alert_hash"]  # ✅ Corriger l'accès
                         payload = alert["payload"]
                         
                         # Process the alert
@@ -169,7 +169,7 @@ async def _alert_worker():
                     except Exception as e:
                         logger.error(f"❌ Failed to process alert {alert['alert_hash'][:8]}: {e}")
                         if db:
-                            db.update_alert_status(alert[0], AlertStatus.FAILED)
+                            await db.update_alert_status(alert["alert_hash"], AlertStatus.FAILED)  # ✅ Ajouter await et corriger
             
             # Wait before checking again
             await asyncio.sleep(5)
@@ -203,7 +203,7 @@ async def datadog_webhook(request: Request):
         alert_hash = _generate_alert_hash(payload)
         
         # Check if we've already processed this alert
-        if db and db.is_alert_received(alert_hash):
+        if db and await db.is_alert_received(alert_hash):  # ✅ Ajouter await
             logger.info(f"🔄 Alert {alert_hash} already exists, skipping")
             return JSONResponse(
                 status_code=200,
@@ -213,6 +213,11 @@ async def datadog_webhook(request: Request):
                     "alert_hash": alert_hash
                 }
             )
+        
+        # ✅ SAUVEGARDER l'alert dans la base
+        if db:
+            await db.save_alert(payload, alert_hash)
+            logger.info(f"💾 Alert {alert_hash[:8]} saved to database")
         
         # Queue the alert for processing
         logger.info(f"📥 Queuing alert {alert_hash} for processing")
@@ -238,7 +243,7 @@ async def queue_status():
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     try:
-        pending_alerts = db.get_pending_alerts()
+        pending_alerts = await db.get_pending_alerts()  # ✅ Ajouter await
         return JSONResponse(
             status_code=200,
             content={
@@ -257,7 +262,7 @@ async def cleanup_old_alerts(days: int = 30):
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     try:
-        deleted_count = db.cleanup_old_alerts(days)
+        deleted_count = await db.cleanup_old_alerts(days)  # ✅ Ajouter await
         return JSONResponse(
             status_code=200,
             content={

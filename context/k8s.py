@@ -1,13 +1,19 @@
 from kubernetes import client, config
 import logging
+from typing import Dict, Any  # ✅ Ajouter
+import asyncio  # ✅ Ajouter
 
 logger = logging.getLogger(__name__)
 
-def get_k8s_context(namespace: str | None, pod_name: str | None, deployment_name: str | None) -> dict:
-    """
-    Retrieves the Kubernetes context for a pod and its deployment.
-    Handles cases where namespace or deployment_name might be None.
-    """
+async def get_k8s_context(namespace: str = None, pod_name: str = None, deployment_name: str = None) -> Dict[str, Any]:
+    """Get Kubernetes context for a pod and its deployment"""
+    
+    # Exécuter les appels bloquants dans un thread séparé
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _sync_get_k8s_context, namespace, pod_name, deployment_name)
+
+def _sync_get_k8s_context(namespace: str = None, pod_name: str = None, deployment_name: str = None) -> Dict[str, Any]:
+    """Version synchrone pour exécution dans un thread séparé"""
     try:
         config.load_kube_config()
     except:

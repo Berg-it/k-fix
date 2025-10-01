@@ -61,10 +61,6 @@ class DatadogClientManager:
         try:
             client = self.get_client()
             events_api = EventsApi(client)
-            
-            # Simulate processing time
-            await asyncio.sleep(62)
-            
             response = events_api.get_event(event_id=str(event_id))
             
             return {
