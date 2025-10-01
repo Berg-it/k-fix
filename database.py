@@ -13,6 +13,8 @@ class AlertStatus(Enum):
     """Enumeration for alert status values"""
     RECEIVED = "received"
     PROCESSING = "processing"
+    ENRICHED = "enriched"
+    SOLUTION_PROPOSED = "solution_proposed"
     RESOLVED = "resolved"
     FAILED = "failed"
     
@@ -88,9 +90,9 @@ class AlertDatabase:
                 await asyncio.wait_for(
                     conn.execute("""
                         CREATE TABLE IF NOT EXISTS alerts (
-                            id SERIAL PRIMARY KEY,
-                            alert_hash VARCHAR(64) UNIQUE NOT NULL,
+                            alert_hash VARCHAR(64) PRIMARY KEY,
                             payload JSONB NOT NULL,
+                            enriched_data JSONB NULL,
                             status VARCHAR(20) DEFAULT $1,
                             created_at TIMESTAMP DEFAULT NOW(),
                             updated_at TIMESTAMP DEFAULT NOW(),
@@ -158,57 +160,76 @@ class AlertDatabase:
             logger.error(f"❌ Error checking alert {alert_hash[:8]}: {e}")
             return False
     
-    async def save_alert(self, alert_hash: str, payload: Dict[str, Any]) -> bool:
-        """Save alert to database"""
+    async def save_alert(self, payload: Dict[str, Any], alert_hash: str) -> str:
+        """Save alert to database and return alert_hash"""
         try:
             async with asyncio.wait_for(self.pool.acquire(), timeout=5.0) as conn:
                 await asyncio.wait_for(
                     conn.execute("""
-                        INSERT INTO alerts (alert_hash, payload, status, created_at)
-                        VALUES ($1, $2, $3, NOW())
+                        INSERT INTO alerts (alert_hash, payload) 
+                        VALUES ($1, $2)
                         ON CONFLICT (alert_hash) DO NOTHING
-                    """, alert_hash, json.dumps(payload), str(AlertStatus.RECEIVED)),
-                    timeout=15.0
+                    """, alert_hash, json.dumps(payload)),
+                    timeout=10.0
                 )
-            
             logger.info(f"💾 Alert {alert_hash[:8]} saved to database")
-            return True
-            
-        except asyncio.TimeoutError:
-            logger.error(f"❌ Timeout saving alert {alert_hash[:8]}")
-            return False
+            return alert_hash
         except Exception as e:
             logger.error(f"❌ Failed to save alert {alert_hash[:8]}: {e}")
-            return False
+            raise
     
-    async def update_alert_status(self, alert_hash: str, status: AlertStatus, error_message: str = None) -> None:
-        """Update alert status in database"""
+    async def update_alert_status(self, alert_hash: str, status: AlertStatus, error_message: str = None, enriched_data: Dict[str, Any] = None) -> None:
+        """Update alert status with optional enriched data"""
         try:
             async with asyncio.wait_for(self.pool.acquire(), timeout=5.0) as conn:
                 if status == AlertStatus.RESOLVED:
-                    await asyncio.wait_for(
-                        conn.execute("""
-                            UPDATE alerts 
-                            SET status = $1, updated_at = NOW(), processed_at = NOW()
-                            WHERE alert_hash = $2
-                        """, str(status), alert_hash),
-                        timeout=10.0
-                    )
+                    # For resolved status, set processed_at
+                    if enriched_data:
+                        await asyncio.wait_for(
+                            conn.execute("""
+                                UPDATE alerts 
+                                SET status = $1, updated_at = NOW(), processed_at = NOW(), enriched_data = $2
+                                WHERE alert_hash = $3
+                            """, str(status), json.dumps(enriched_data), alert_hash),
+                            timeout=10.0
+                        )
+                    else:
+                        await asyncio.wait_for(
+                            conn.execute("""
+                                UPDATE alerts 
+                                SET status = $1, updated_at = NOW(), processed_at = NOW()
+                                WHERE alert_hash = $2
+                            """, str(status), alert_hash),
+                            timeout=10.0
+                        )
                 else:
-                    await asyncio.wait_for(
-                        conn.execute("""
-                            UPDATE alerts 
-                            SET status = $1, updated_at = NOW(), error_message = $3,
-                                retry_count = retry_count + 1
-                            WHERE alert_hash = $2
-                        """, str(status), alert_hash, error_message),
-                        timeout=10.0
-                    )
+                    # For other statuses
+                    if enriched_data:
+                        await asyncio.wait_for(
+                            conn.execute("""
+                                UPDATE alerts 
+                                SET status = $1, updated_at = NOW(), enriched_data = $2, error_message = $3,
+                                    retry_count = retry_count + 1
+                                WHERE alert_hash = $4
+                            """, str(status), json.dumps(enriched_data), error_message, alert_hash),
+                            timeout=10.0
+                        )
+                    else:
+                        await asyncio.wait_for(
+                            conn.execute("""
+                                UPDATE alerts 
+                                SET status = $1, updated_at = NOW(), error_message = $2,
+                                    retry_count = retry_count + 1
+                                WHERE alert_hash = $3
+                            """, str(status), error_message, alert_hash),
+                            timeout=10.0
+                        )
                     
-            logger.info(f"📝 Alert {alert_hash[:8]} status updated to {status.value}")
+            if enriched_data:
+                logger.info(f"📊 Alert {alert_hash[:8]} status updated to {status.value} with enriched data")
+            else:
+                logger.info(f"📝 Alert {alert_hash[:8]} status updated to {status.value}")
             
-        except asyncio.TimeoutError:
-            logger.error(f"❌ Timeout updating alert {alert_hash[:8]} status")
         except Exception as e:
             logger.error(f"❌ Failed to update alert {alert_hash[:8]} status: {e}")
     
@@ -235,10 +256,6 @@ class AlertDatabase:
                     }
                     for alert in alerts
                 ]
-                
-        except asyncio.TimeoutError:
-            logger.error("❌ Timeout getting pending alerts")
-            return []
         except Exception as e:
             logger.error(f"❌ Error getting pending alerts: {e}")
             return []

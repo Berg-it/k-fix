@@ -30,9 +30,35 @@ def get_k8s_context(namespace: str | None, pod_name: str | None, deployment_name
         context.update(discovery_result)
     else:
         # 📋 Méthode classique si on a le namespace
-        context["pod"] = _get_pod_context_with_fallback(v1, namespace or "default", pod_name)
-        context["deployment"] = _get_deployment_context(apps_v1, namespace or "default", deployment_name)
-        context["events"] = _get_pod_events(v1, namespace or "default", pod_name)
+        pod_context = _get_pod_context_with_fallback(v1, namespace or "default", pod_name)
+        context["pod"] = pod_context
+        
+        # ⚠️ Vérifier si le pod a été trouvé avant de continuer
+        if pod_context and "error" not in pod_context:
+            # 🔍 Si on n'a pas de deployment_name, on essaie de le découvrir
+            if deployment_name:
+                context["deployment"] = _get_deployment_context(apps_v1, namespace or "default", deployment_name)
+            elif "name" in pod_context:
+                # Utiliser les infos du pod déjà récupéré
+                try:
+                    pod = v1.read_namespaced_pod(name=pod_context["name"], namespace=pod_context["namespace"])
+                    discovered_deployment = _discover_deployment_from_pod(apps_v1, pod)
+                    if discovered_deployment:
+                        context["deployment"] = _get_deployment_context(apps_v1, pod_context["namespace"], discovered_deployment)
+                        logger.info(f"🎯 Auto-discovered deployment: {discovered_deployment}")
+                    else:
+                        context["deployment"] = {"error": "No deployment found for this pod"}
+                except Exception as e:
+                    logger.error(f"❌ Error discovering deployment: {e}")
+                    context["deployment"] = {"error": f"Discovery failed: {str(e)}"}
+            else:
+                context["deployment"] = {"error": "No deployment name provided"}
+            
+            context["events"] = _get_pod_events(v1, namespace or "default", pod_name)
+        else:
+            # Si le pod n'a pas été trouvé, pas la peine de chercher le deployment
+            context["deployment"] = {"error": "Cannot find deployment without valid pod"}
+            context["events"] = []
     
     return context
 
@@ -49,11 +75,20 @@ def _discover_pod_automatically(v1, apps_v1, pod_name: str) -> dict:
     }
     
     try:
-        # 📋 1. Lister tous les namespaces
-        namespaces = v1.list_namespace()
+        # 🎯 Optimisation: chercher d'abord dans les namespaces communs
+        priority_namespaces = ["default", "kube-system", "monitoring", "logging"]
         
-        for ns in namespaces.items:
-            namespace_name = ns.metadata.name
+        # 📋 1. Lister tous les namespaces
+        all_namespaces = v1.list_namespace()
+        namespace_names = [ns.metadata.name for ns in all_namespaces.items]
+        
+        # Réorganiser pour prioriser les namespaces communs
+        search_order = priority_namespaces + [ns for ns in namespace_names if ns not in priority_namespaces]
+        
+        for namespace_name in search_order:
+            if namespace_name not in namespace_names:
+                continue
+                
             discovery_info["searched_namespaces"].append(namespace_name)
             
             try:
@@ -65,13 +100,16 @@ def _discover_pod_automatically(v1, apps_v1, pod_name: str) -> dict:
                 
                 # 🏷️ 3. Découvrir le déploiement associé
                 deployment_name = _discover_deployment_from_pod(apps_v1, pod)
+                deployment_context = {}
+                
                 if deployment_name:
                     discovery_info["found_deployment"] = deployment_name
+                    deployment_context = _get_deployment_context(apps_v1, namespace_name, deployment_name)
                 
                 # 📦 4. Construire le contexte complet
                 return {
                     "pod": _format_pod_info(pod, discovered=True),
-                    "deployment": _get_deployment_context(apps_v1, namespace_name, deployment_name) if deployment_name else {},
+                    "deployment": deployment_context,
                     "events": _get_pod_events(v1, namespace_name, pod_name),
                     "discovery_info": discovery_info
                 }
@@ -83,7 +121,7 @@ def _discover_pod_automatically(v1, apps_v1, pod_name: str) -> dict:
         logger.warning(f"❌ Pod {pod_name} not found in any namespace")
         return {
             "pod": {"error": f"Pod {pod_name} not found in any namespace"},
-            "deployment": {},
+            "deployment": {"error": "Cannot find deployment without valid pod"},
             "events": [],
             "discovery_info": discovery_info
         }
@@ -92,7 +130,7 @@ def _discover_pod_automatically(v1, apps_v1, pod_name: str) -> dict:
         logger.error(f"❌ Error during automatic discovery: {e}")
         return {
             "pod": {"error": f"Discovery failed: {str(e)}"},
-            "deployment": {},
+            "deployment": {"error": "Discovery failed"},
             "events": [],
             "discovery_info": discovery_info
         }
@@ -117,8 +155,9 @@ def _discover_deployment_from_pod(apps_v1, pod) -> str | None:
                                 if rs_owner.kind == "Deployment":
                                     logger.info(f"🎯 Found deployment {rs_owner.name} via ReplicaSet")
                                     return rs_owner.name
-                    except:
-                        pass
+                    except client.exceptions.ApiException as e:
+                        logger.warning(f"⚠️ Could not read ReplicaSet {rs_name}: {e}")
+                        continue
         
         # 🏷️ Méthode 2: Labels (fallback)
         if pod.metadata.labels:
@@ -139,7 +178,8 @@ def _discover_deployment_from_pod(apps_v1, pod) -> str | None:
                         deployment = apps_v1.read_namespaced_deployment(name=app_name, namespace=namespace)
                         logger.info(f"🎯 Found deployment {app_name} via label {label_key}")
                         return app_name
-                    except:
+                    except client.exceptions.ApiException as e:
+                        logger.debug(f"🔍 Deployment {app_name} not found via label {label_key}: {e}")
                         continue
         
         logger.warning(f"⚠️ Could not discover deployment for pod {pod.metadata.name}")
@@ -235,7 +275,7 @@ def _get_deployment_context(apps_v1, namespace: str, deployment_name: str) -> di
             "resources": resources
         }
     except client.exceptions.ApiException as e:
-        print(f"Error retrieving deployment: {e}")
+        logger.error(f"❌ Error retrieving deployment: {e}")  # Utiliser logger au lieu de print
         return {}
 
 def _get_pod_events(v1, namespace: str, pod_name: str) -> list:
@@ -250,7 +290,7 @@ def _get_pod_events(v1, namespace: str, pod_name: str) -> list:
             for event in events.items
         ]
     except client.exceptions.ApiException as e:
-        print(f"Error retrieving events: {e}")
+        logger.error(f"❌ Error retrieving events: {e}")  # Utiliser logger au lieu de print
         return []
 
 

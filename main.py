@@ -97,16 +97,12 @@ async def _process_alert_async(payload: Dict[str, Any], alert_hash: str):
         return
     
     try:
-        # Save initial alert
-        alert_id = db.save_alert(payload, alert_hash)
-        logger.info(f"📝 Alert {alert_id} saved with hash {alert_hash}")
-        
         # Update status to processing
-        db.update_alert_status(alert_id, AlertStatus.PROCESSING)
-        logger.info(f"🔄 Processing alert {alert_id}")
+        await db.update_alert_status(alert_hash, AlertStatus.PROCESSING)
+        logger.info(f"🔄 Processing alert {alert_hash[:8]}")
         
         # Get runtime event details
-        event_id = payload.get("id")
+        event_id = payload.get("event_id")
         if event_id:
             try:
                 event_details = await datadog_manager.get_runtime_event(int(event_id))
@@ -122,32 +118,29 @@ async def _process_alert_async(payload: Dict[str, Any], alert_hash: str):
                     
                     # Combine all information
                     enriched_data = {
-                        "original_alert": payload,
                         "event_details": event_details,
                         "k8s_context": k8s_context,
                         "processing_time": time.time(),
                         "enrichment_status": "success"
                     }
                     
-                    # Update with enriched data
-                    db.update_alert_enrichment(alert_id, enriched_data)
-                    db.update_alert_status(alert_id, AlertStatus.RESOLVED)
-                    logger.info(f"✅ Alert {alert_id} enriched successfully")
+                    # Update alert with enriched data and ENRICHED status
+                    await db.update_alert_status(alert_hash, AlertStatus.ENRICHED, enriched_data=enriched_data)
+                    logger.info(f"✅ Alert {alert_hash[:8]} enriched successfully")
                 else:
-                    logger.warning(f"⚠️ No pod information found in tags for alert {alert_id}")
-                    db.update_alert_status(alert_id, AlertStatus.RESOLVED)
+                    logger.warning(f"⚠️ No pod information found in tags for alert {alert_hash[:8]}")
+                    await db.update_alert_status(alert_hash, AlertStatus.FAILED)
                     
             except Exception as e:
                 logger.error(f"❌ Failed to get event details for {event_id}: {e}")
-                db.update_alert_status(alert_id, AlertStatus.FAILED)
+                await db.update_alert_status(alert_hash, AlertStatus.FAILED)
         else:
-            logger.warning(f"⚠️ No event ID found in payload for alert {alert_id}")
-            db.update_alert_status(alert_id, AlertStatus.FAILED)
+            logger.warning(f"⚠️ No event ID found in payload for alert {alert_hash[:8]}")
+            await db.update_alert_status(alert_hash, AlertStatus.FAILED)
             
     except Exception as e:
         logger.error(f"❌ Failed to process alert {alert_hash}: {e}")
-        if 'alert_id' in locals():
-            db.update_alert_status(alert_id, AlertStatus.FAILED)
+        await db.update_alert_status(alert_hash, AlertStatus.FAILED)
 
 async def _alert_worker():
     """Background worker to process alerts from the queue"""
@@ -160,22 +153,21 @@ async def _alert_worker():
     while True:
         try:
             # Get pending alerts
-            pending_alerts = db.get_pending_alerts()
+            pending_alerts = await db.get_pending_alerts()
             
             if pending_alerts:
                 logger.info(f"📋 Processing {len(pending_alerts)} pending alerts")
                 
                 for alert in pending_alerts:
                     try:
-                        alert_id, payload_str, alert_hash = alert
-                        import json
-                        payload = json.loads(payload_str)
+                        alert_hash = alert["alert_hash"]
+                        payload = alert["payload"]
                         
                         # Process the alert
                         await _process_alert_async(payload, alert_hash)
                         
                     except Exception as e:
-                        logger.error(f"❌ Failed to process alert {alert[0]}: {e}")
+                        logger.error(f"❌ Failed to process alert {alert['alert_hash'][:8]}: {e}")
                         if db:
                             db.update_alert_status(alert[0], AlertStatus.FAILED)
             
@@ -186,6 +178,7 @@ async def _alert_worker():
             logger.error(f"❌ Alert worker error: {e}")
             await asyncio.sleep(10)
 
+#Endpoints
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -196,8 +189,6 @@ async def health_check():
         "datadog": datadog_manager.is_connected() if datadog_manager else False
     }
 
-
-#Endpoints
 @app.post("/datadog-webhook")
 async def datadog_webhook(request: Request):
     """Handle incoming Datadog webhooks"""
@@ -212,7 +203,7 @@ async def datadog_webhook(request: Request):
         alert_hash = _generate_alert_hash(payload)
         
         # Check if we've already processed this alert
-        if db and db.alert_exists(alert_hash):
+        if db and db.is_alert_received(alert_hash):
             logger.info(f"🔄 Alert {alert_hash} already exists, skipping")
             return JSONResponse(
                 status_code=200,
@@ -238,6 +229,7 @@ async def datadog_webhook(request: Request):
     except Exception as e:
         logger.error(f"❌ Webhook processing failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.get("/queue/status")
 async def queue_status():
