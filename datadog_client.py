@@ -6,6 +6,7 @@ from typing import Dict, Any
 from datadog_api_client import ApiClient, Configuration
 from datadog_api_client.v2.api.events_api import EventsApi
 from datadog_api_client.exceptions import NotFoundException
+from datadog_api_client.v2.model.v2_event_response import V2EventResponse
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +62,14 @@ class DatadogClientManager:
         try:
             client = self.get_client()
             events_api = EventsApi(client)
-            response = events_api.get_event(event_id=str(event_id))
+            event_response: V2EventResponse = events_api.get_event(event_id=str(event_id))
             
             return {
                 "event_id": event_id,
-                "title": response.data.attributes.title,
-                "message": response.data.attributes.message,
-                "timestamp": response.data.attributes.timestamp,
-                "tags": response.data.attributes.tags or []
+                "title": event_response.data.attributes.attributes.title,
+                "message": event_response.data.attributes.message,
+                "timestamp": event_response.data.attributes.timestamp,
+                "tags": event_response.data.attributes.tags or []
             }
         except NotFoundException:
             logger.warning(f"Event {event_id} not found in Datadog")

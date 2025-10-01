@@ -38,6 +38,7 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting K-Fix application")
     try:
         db = AlertDatabase()
+        await db.initialize()
         logger.info("✅ Database initialized")
         
         # Start background worker
@@ -80,9 +81,9 @@ def _extract_k8s_info_from_tags(tags: list) -> tuple[str, str | None, str | None
 
 def _validate_payload(payload: Dict[str, Any]) -> None:
     """Validate incoming webhook payload"""
-    if not payload.get("eventType"):
+    if not payload.get("event_id"):
         raise ValueError("Missing eventType in payload")
-    if not payload.get("id"):
+    if not payload.get("alert_id"):
         raise ValueError("Missing id in payload")
 
 def _generate_alert_hash(payload: Dict[str, Any]) -> str:
@@ -194,7 +195,7 @@ async def datadog_webhook(request: Request):
     """Handle incoming Datadog webhooks"""
     try:
         payload = await request.json()
-        logger.info(f"📨 Received webhook: {payload.get('eventType', 'unknown')}")
+        logger.info(f"📨 Received webhook: {payload.get('event_id', 'unknown')}")
         
         # Validate payload
         _validate_payload(payload)

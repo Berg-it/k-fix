@@ -82,49 +82,54 @@ class AlertDatabase:
             logger.error(f"❌ Failed to initialize database: {e}")
             raise
     
+    # ✅ CORRECT - Séparer l'acquisition et le context manager
     async def _create_tables(self) -> None:
         """Create database tables and indexes"""
         try:
-            async with asyncio.wait_for(self.pool.acquire(), timeout=10.0) as conn:
-                # Create alerts table
-                await asyncio.wait_for(
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS alerts (
-                            alert_hash VARCHAR(64) PRIMARY KEY,
-                            payload JSONB NOT NULL,
-                            enriched_data JSONB NULL,
-                            status VARCHAR(20) DEFAULT $1,
-                            created_at TIMESTAMP DEFAULT NOW(),
-                            updated_at TIMESTAMP DEFAULT NOW(),
-                            processed_at TIMESTAMP NULL,
-                            retry_count INTEGER DEFAULT 0,
-                            error_message TEXT NULL
-                        );
-                    """, str(AlertStatus.RECEIVED)),
-                    timeout=15.0
-                )
-                
-                # Create indexes
-                await asyncio.wait_for(
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_alerts_status_created 
-                        ON alerts(status, created_at);
-                    """),
-                    timeout=10.0
-                )
-                
-                await asyncio.wait_for(
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_alerts_hash 
-                        ON alerts(alert_hash);
-                    """),
-                    timeout=10.0
-                )
-                
-                logger.info("📋 Database tables and indexes created")
+            conn = await asyncio.wait_for(self.pool.acquire(), timeout=10.0)
+            try:
+                async with conn.transaction():
+                    # Create alerts table
+                    await asyncio.wait_for(
+                        conn.execute("""
+                            CREATE TABLE IF NOT EXISTS alerts (
+                                alert_hash VARCHAR(64) PRIMARY KEY,
+                                payload JSONB NOT NULL,
+                                enriched_data JSONB NULL,
+                                status VARCHAR(20) DEFAULT 'received',
+                                created_at TIMESTAMP DEFAULT NOW(),
+                                updated_at TIMESTAMP DEFAULT NOW(),
+                                processed_at TIMESTAMP NULL,
+                                retry_count INTEGER DEFAULT 0,
+                                error_message TEXT NULL
+                            );
+                        """),
+                        timeout=15.0
+                    )
+                    
+                    # Create indexes
+                    await asyncio.wait_for(
+                        conn.execute("""
+                            CREATE INDEX IF NOT EXISTS idx_alerts_status_created 
+                            ON alerts(status, created_at);
+                        """),
+                        timeout=10.0
+                    )
+                    
+                    await asyncio.wait_for(
+                        conn.execute("""
+                            CREATE INDEX IF NOT EXISTS idx_alerts_hash 
+                            ON alerts(alert_hash);
+                        """),
+                        timeout=10.0
+                    )
+                    
+                logger.info("✅ Database tables created successfully")
+            finally:
+                await self.pool.release(conn)
                 
         except asyncio.TimeoutError:
-            logger.error("❌ Timeout during table creation")
+            logger.error("❌ Timeout creating database tables")
             raise
         except Exception as e:
             logger.error(f"❌ Error creating tables: {e}")
@@ -144,10 +149,10 @@ class AlertDatabase:
     async def is_alert_received(self, alert_hash: str) -> bool:
         """Check if alert has already been received"""
         try:
-            async with asyncio.wait_for(self.pool.acquire(), timeout=5.0) as conn:
+            async with self.pool.acquire() as conn:
                 result = await asyncio.wait_for(
                     conn.fetchval(
-                        "SELECT id FROM alerts WHERE alert_hash = $1",
+                        "SELECT alert_hash FROM alerts WHERE alert_hash = $1",
                         alert_hash
                     ),
                     timeout=10.0
@@ -163,7 +168,7 @@ class AlertDatabase:
     async def save_alert(self, payload: Dict[str, Any], alert_hash: str) -> str:
         """Save alert to database and return alert_hash"""
         try:
-            async with asyncio.wait_for(self.pool.acquire(), timeout=5.0) as conn:
+            async with self.pool.acquire() as conn:
                 await asyncio.wait_for(
                     conn.execute("""
                         INSERT INTO alerts (alert_hash, payload) 
@@ -181,7 +186,7 @@ class AlertDatabase:
     async def update_alert_status(self, alert_hash: str, status: AlertStatus, error_message: str = None, enriched_data: Dict[str, Any] = None) -> None:
         """Update alert status with optional enriched data"""
         try:
-            async with asyncio.wait_for(self.pool.acquire(), timeout=5.0) as conn:
+            async with self.pool.acquire() as conn:
                 if status == AlertStatus.RESOLVED:
                     # For resolved status, set processed_at
                     if enriched_data:
@@ -236,13 +241,13 @@ class AlertDatabase:
     async def get_pending_alerts(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get alerts that need processing (received > 1 minute ago)"""
         try:
-            async with asyncio.wait_for(self.pool.acquire(), timeout=5.0) as conn:
+            async with self.pool.acquire() as conn:
                 alerts = await asyncio.wait_for(
                     conn.fetch("""
                         SELECT alert_hash, payload 
                         FROM alerts 
                         WHERE status = $1 
-                        AND created_at < NOW() - INTERVAL '1 minute'
+                        AND created_at < NOW() - INTERVAL '66 seconds'
                         ORDER BY created_at ASC
                         LIMIT $2
                     """, str(AlertStatus.RECEIVED), limit),
@@ -263,7 +268,7 @@ class AlertDatabase:
     async def get_alert_statistics(self) -> Dict[str, Any]:
         """Get database statistics for monitoring"""
         try:
-            async with asyncio.wait_for(self.pool.acquire(), timeout=5.0) as conn:
+            async with self.pool.acquire() as conn:
                 # Get counts by status
                 stats = await asyncio.wait_for(
                     conn.fetch("""
@@ -311,7 +316,7 @@ class AlertDatabase:
     async def cleanup_old_alerts(self, days: int = 30) -> int:
         """Clean up old resolved alerts (optional maintenance method)"""
         try:
-            async with asyncio.wait_for(self.pool.acquire(), timeout=5.0) as conn:
+            async with self.pool.acquire() as conn:
                 # ✅ CORRECTION: Utilisation des énumérations avec paramètres sécurisés
                 result = await asyncio.wait_for(
                     conn.execute("""
@@ -341,7 +346,7 @@ class AlertDatabase:
     async def get_connection_health(self) -> Dict[str, Any]:
         """Check database connection health with timeout"""
         try:
-            async with asyncio.wait_for(self.pool.acquire(), timeout=3.0) as conn:
+            async with self.pool.acquire() as conn:
                 start_time = datetime.now()
                 await asyncio.wait_for(
                     conn.fetchval("SELECT 1"),
