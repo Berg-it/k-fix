@@ -1,7 +1,7 @@
 import os
 import logging
 import json
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any, List
 from enum import Enum
 import asyncpg
 from datetime import datetime
@@ -24,7 +24,7 @@ class AlertDatabase:
     """Database manager for alert storage and retrieval"""
     
     def __init__(self):
-        self.pool: Optional[asyncpg.Pool] = None
+        self.pool: asyncpg.Pool | None = None
         self._config = self._get_db_config()
     
     def _get_db_config(self) -> Dict[str, Any]:

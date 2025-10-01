@@ -1,7 +1,11 @@
 import os
 import logging
-from typing import Optional
+import asyncio
+import datetime
+from typing import Dict, Any
 from datadog_api_client import ApiClient, Configuration
+from datadog_api_client.v2.api.events_api import EventsApi
+from datadog_api_client.exceptions import NotFoundException
 
 logger = logging.getLogger(__name__)
 
@@ -9,8 +13,8 @@ class DatadogClientManager:
     """Manager for Datadog API client with connection reuse"""
     
     def __init__(self):
-        self._client: Optional[ApiClient] = None
-        self._config: Optional[Configuration] = None
+        self._client: ApiClient | None = None
+        self._config: Configuration | None = None
     
     def _get_datadog_config(self) -> Configuration:
         """Returns Datadog configuration with validation"""
@@ -51,6 +55,34 @@ class DatadogClientManager:
     def is_connected(self) -> bool:
         """Check if client is connected"""
         return self._client is not None
+
+    async def get_runtime_event(self, event_id: int) -> Dict[str, Any]:
+        """Retrieve runtime event details from Datadog"""
+        try:
+            client = self.get_client()
+            events_api = EventsApi(client)
+            
+            # Simulate processing time
+            await asyncio.sleep(62)
+            
+            response = events_api.get_event(event_id=str(event_id))
+            
+            return {
+                "event_id": event_id,
+                "title": response.data.attributes.title,
+                "message": response.data.attributes.message,
+                "timestamp": response.data.attributes.timestamp,
+                "tags": response.data.attributes.tags or []
+            }
+        except NotFoundException:
+            logger.warning(f"Event {event_id} not found in Datadog")
+            return {
+                "event_id": event_id,
+                "title": "Event not found",
+                "message": "This event could not be retrieved from Datadog",
+                "timestamp": datetime.datetime.now(),
+                "tags": []
+            }
 
 # Global instance
 datadog_manager = DatadogClientManager()
