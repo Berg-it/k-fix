@@ -4,7 +4,6 @@ from typing import Dict, Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
-from context.k8s import get_k8s_context
 import datetime
 import asyncio
 import hashlib
@@ -12,8 +11,8 @@ import time
 from contextlib import asynccontextmanager
 
 # Import our custom modules
-from datadog_client import datadog_manager
-from database import AlertDatabase, AlertStatus
+from external_resource_service import datadog_manager, AlertDatabase, AlertStatus
+from context import get_k8s_context
 
 # Logging configuration
 logging.basicConfig(
