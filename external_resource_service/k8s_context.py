@@ -2,8 +2,12 @@ from kubernetes import client, config
 import logging
 from typing import Dict, Any
 import asyncio
+from .k8s_client_manager import K8sClientManager
 
 logger = logging.getLogger(__name__)
+
+# Instance globale du gestionnaire
+k8s_manager = K8sClientManager()
 
 async def get_k8s_context(namespace: str = None, pod_name: str = None, deployment_name: str = None) -> Dict[str, Any]:
     """Get Kubernetes context for a pod and its deployment"""
@@ -14,13 +18,9 @@ async def get_k8s_context(namespace: str = None, pod_name: str = None, deploymen
 
 def _sync_get_k8s_context(namespace: str = None, pod_name: str = None, deployment_name: str = None) -> Dict[str, Any]:
     """Version synchrone pour exécution dans un thread séparé"""
-    try:
-        config.load_kube_config()
-    except:
-        config.load_incluster_config()
-
-    v1 = client.CoreV1Api()
-    apps_v1 = client.AppsV1Api()
+    
+    # 🚀 Utiliser les clients réutilisables
+    v1, apps_v1 = k8s_manager.get_clients()
 
     context = {
         "pod": {},

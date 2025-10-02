@@ -1,6 +1,6 @@
 from .database import AlertDatabase, AlertStatus
 from .datadog_client import DatadogClientManager, datadog_manager
-from .k8s import get_k8s_context
+from .k8s_context import get_k8s_context
 
 __all__ = [
     "AlertDatabase",

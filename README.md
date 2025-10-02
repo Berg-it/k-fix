@@ -469,12 +469,13 @@ Feedback Loop:
 ---
 
 ## 📌 Notes
-
+- K-Fix sera un système RAG (Retrieval-Augmented Generation) qui combine la récupération de contexte et la génération de réponses.
 - ⚠️ **Production** : MR jamais auto-mergée.  
 - ✅ **Staging/Dev** : auto-merge possible.  
 - 🔄 Apprentissage continu via Vector DB.  
 - 🧠 **LLM seul** = Intelligence générale  
 - 🎯 **LLM + Vector DB** = Intelligence spécialisée sur VOTRE infrastructure  
+
 
 ---
 
@@ -482,14 +483,14 @@ Feedback Loop:
 
 ```
 kfix/
- ├── main.py          # API FastAPI (webhook Datadog)
- ├── context/         # modules de récupération contexte
- ├── decision/        # moteur de raisonnement (LLM + règles)
- ├── actions/         # générateur de patchs Kubernetes
- ├── safety/          # validations dry-run, quotas
- ├── gitlab/          # interaction GitLab (MR)
- ├── memory/          # Vector DB + BDD relationnelle
- └── tests/           # tests unitaires & intégration
+ ├── main.py                            # API FastAPI (webhook Datadog)
+ ├── external_resource_service/         # modules de récupération contexte
+ ├── decision/                          # moteur de raisonnement (LLM + règles)
+ ├── actions/                           # générateur de patchs Kubernetes
+ ├── safety/                            # validations dry-run, quotas
+ ├── gitlab/                            # interaction GitLab (MR)
+ ├── memory/                            # Vector DB + BDD relationnelle
+ └── tests/                             # tests unitaires & intégration
 ```
 
 ---
@@ -507,9 +508,7 @@ kfix/
 
 ---
 
-
-
-
+## 🔄 Processus de Flux
 
 1. Réception & Enrichissement multi-source
 	•	Recevoir le webhook natif Datadog (alerte brute).
