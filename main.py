@@ -11,8 +11,7 @@ import time
 from contextlib import asynccontextmanager
 
 # Import our custom modules
-from external_resource_service import datadog_manager, AlertDatabase, AlertStatus
-from context import get_k8s_context
+from external_resource_service import datadog_manager, AlertDatabase, AlertStatus, get_k8s_context
 
 # Logging configuration
 logging.basicConfig(
