@@ -12,6 +12,8 @@ from contextlib import asynccontextmanager
 
 # Import our custom modules
 from external_resource_service import datadog_manager, AlertDatabase, AlertStatus, get_k8s_context
+from decision import ReasoningEngine
+
 
 # Logging configuration
 logging.basicConfig(
@@ -21,6 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 db: AlertDatabase | None = None
+reasoning_engine: ReasoningEngine | None = None
 
 # Load environment variables for local development
 if os.getenv("ENVIRONMENT", "local") == "local":
@@ -30,14 +33,19 @@ if os.getenv("ENVIRONMENT", "local") == "local":
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
-    global db
+    global db, reasoning_engine
     
     # Startup
     logger.info("🚀 Starting K-Fix application")
     try:
+        # Initialize database
         db = AlertDatabase()
         await db.initialize()
         logger.info("✅ Database initialized")
+        
+        # Initialize reasoning engine
+        reasoning_engine = ReasoningEngine()
+        logger.info("🧠 Reasoning engine initialized")
         
         # Start background worker
         asyncio.create_task(_alert_worker())
@@ -52,6 +60,8 @@ async def lifespan(app: FastAPI):
         logger.info("🛑 Shutting down K-Fix application")
         if datadog_manager:
             datadog_manager.close()
+        # Clean up reasoning engine if needed
+        reasoning_engine = None
         logger.info("✅ Application shutdown complete")
 
 app = FastAPI(
@@ -125,7 +135,11 @@ async def _process_alert_async(payload: Dict[str, Any], alert_hash: str):
                     
                     # Update alert with enriched data and ENRICHED status
                     await db.update_alert_status(alert_hash, AlertStatus.ENRICHED, enriched_data=enriched_data)
-                    logger.info(f"✅ Alert {alert_hash[:8]} enriched successfully")
+                    
+                    # Call LLM to analyze the incident
+                    reasoning_result = await reasoning_engine.analyze_incident(enriched_data)
+                    #await db.update_alert_status(alert_hash, AlertStatus.ANALYZED, enriched_data=reasoning_result)
+                    logger.info(f"✅ Alert {alert_hash[:8]} enriched and analyzed successfully")
                 else:
                     logger.warning(f"⚠️ No pod information found in tags for alert {alert_hash[:8]}")
                     await db.update_alert_status(alert_hash, AlertStatus.FAILED)
